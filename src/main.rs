@@ -1,7 +1,5 @@
-use clap::{App, Arg};
-use image::{self, GenericImageView, ImageBuffer, Pixel, Rgb, Rgba};
-
-const STRIDE: u32 = 2;
+use clap::{value_t, App, Arg};
+use image::{self, GenericImageView, Pixel, Rgba};
 
 fn average_pixel(image: &dyn GenericImageView<Pixel = Rgba<u8>>) -> u8 {
     let (x_size, y_size) = image.dimensions();
@@ -47,26 +45,43 @@ fn main() {
                 .required(true)
                 .index(1),
         )
+        .arg(
+            Arg::with_name("stride")
+                .long("stride")
+                .takes_value(true)
+                .default_value("1")
+                .help("Set the stride")
+                .required(false),
+        )
         .get_matches();
+    let stride = value_t!(matches, "stride", u32).unwrap();
     let input = matches.value_of("INPUT").unwrap();
     let image = image::open(input).expect("Could not open file");
     let (x_size, y_size) = image.dimensions();
 
-    let mut imgbuf = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(x_size / STRIDE, y_size / STRIDE);
-
     println!("<html><style>body {{font-size: 4px; line-height: 0.6; }}</style><body><pre>");
-    for y in (0..y_size).step_by(STRIDE as usize) {
-        for x in (0..x_size).step_by(STRIDE as usize) {
-            let sub_image = *image.view(x, y, STRIDE, STRIDE);
+    for y in (0..y_size).step_by(stride as usize) {
+        for x in (0..x_size).step_by(stride as usize) {
+            let view_width = stride;
+            let view_height = stride;
+            let excess_width = if x + view_width > image.width() {
+                x + view_width - image.width()
+            } else {
+                0
+            };
+            let excess_height = if y + view_height > image.height() {
+                y + view_height - image.height()
+            } else {
+                0
+            };
+
+            let sub_image =
+                *image.view(x, y, view_width - excess_width, view_height - excess_height);
             let mean = average_pixel(&sub_image);
-            if let Some(pixel) = imgbuf.get_pixel_mut_checked(x / STRIDE, y / STRIDE) {
-                *pixel = image::Rgb([mean, mean, mean])
-            }
             let char = u8_to_ascii(mean);
             print!("{}", char);
         }
         println!();
     }
     println!("</pre></body></html>");
-    imgbuf.save("out.png").unwrap();
 }
